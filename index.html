@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MP3-Player Test</title>
+<style>
+  :root {
+    --bg: #E9EEF2;
+    --surface: #FFFFFF;
+    --ink: #15202B;
+    --muted: #5B6B7A;
+    --line: #D3DCE4;
+    --accent: #1F7A6D;
+    --accent-ink: #FFFFFF;
+    --danger: #B3261E;
+    --ok: #1F7A3A;
+    --warn: #9A5B00;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.4;
+    padding: 0 0 130px 0;
+    padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px));
+  }
+  header {
+    padding: 20px 16px 8px;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+  }
+  h1 { font-size: 24px; margin: 0; letter-spacing: -0.3px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  section {
+    background: var(--surface);
+    margin: 12px 10px;
+    padding: 14px 14px 16px;
+    border-radius: 12px;
+  }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .hint { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  .btn {
+    display: inline-block;
+    border: 0;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font: inherit;
+    font-weight: 600;
+    background: var(--line);
+    color: var(--ink);
+    cursor: pointer;
+    -webkit-appearance: none;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn:disabled { opacity: 0.5; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; opacity: 0;
+  }
+  #songList { list-style: none; margin: 0; padding: 0; }
+  #songList li { border-top: 1px solid var(--line); }
+  #songList li:first-child { border-top: 0; }
+  #songList button {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 0; font: inherit; color: inherit;
+    padding: 11px 4px; cursor: pointer;
+  }
+  #songList .size { color: var(--muted); font-size: 13px; }
+  #songList li.current button { color: var(--accent); font-weight: 600; }
+  dl { margin: 0; }
+  dt { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  dt:first-child { margin-top: 0; }
+  dd { margin: 2px 0 0; word-wrap: break-word; }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--danger); }
+  #log {
+    list-style: none; margin: 0 0 12px; padding: 0;
+    font-size: 13px; max-height: 260px; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #log li { padding: 5px 0; border-top: 1px solid var(--line); }
+  #log li:first-child { border-top: 0; }
+  #player {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--ink); color: #FFFFFF;
+    padding: 10px 14px 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  #nowPlaying {
+    font-size: 14px; margin: 0 0 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #progress { width: 100%; margin: 0 0 8px; }
+  .controls { display: flex; justify-content: space-between; }
+  .controls .btn { flex: 1; margin: 0 4px; padding: 11px 0; background: #2C3A4A; color: #FFFFFF; }
+  .controls .btn:first-child { margin-left: 0; }
+  .controls .btn:last-child { margin-right: 0; }
+  .controls .btn.main { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>MP3-Player Test</h1>
+  <p>Prototyp 0.1 – prüft Hintergrund-Wiedergabe, Speicher und Offline-Start</p>
+</header>
+
+<section>
+  <h2>Songs importieren</h2>
+  <label for="picker" class="btn primary" id="pickerLabel">MP3s auswählen</label>
+  <input type="file" id="picker" multiple class="visually-hidden">
+  <p class="hint" id="importStatus">Im Menü „Durchsuchen“ wählen, dann die Dateien in iCloud Drive markieren.</p>
+</section>
+
+<section>
+  <h2>Gespeicherte Songs</h2>
+  <ul id="songList"></ul>
+  <p class="hint" id="emptyHint">Noch keine Songs gespeichert. Importiere oben ein paar MP3s.</p>
+</section>
+
+<section>
+  <h2>Testergebnisse</h2>
+  <dl id="diag"></dl>
+</section>
+
+<section>
+  <h2>Protokoll</h2>
+  <ol id="log"></ol>
+  <button class="btn" id="clearLog">Protokoll leeren</button>
+</section>
+
+<section>
+  <h2>Aufräumen</h2>
+  <button class="btn danger" id="deleteAll">Alle gespeicherten Songs löschen</button>
+  <p class="hint">Löscht nur die Kopien in dieser App. Deine Dateien in iCloud Drive bleiben erhalten.</p>
+</section>
+
+<div id="player">
+  <p id="nowPlaying">Kein Song ausgewählt</p>
+  <input type="range" id="progress" min="0" max="1000" value="0" step="1">
+  <div class="controls">
+    <button class="btn" id="prevBtn">Zurück</button>
+    <button class="btn main" id="playBtn">Abspielen</button>
+    <button class="btn" id="nextBtn">Weiter</button>
+  </div>
+</div>
+
+<audio id="audio" preload="auto"></audio>
+
+<script>
+/*
+  MP3-Player Test-Prototyp 0.1
+  Bewusst ohne neuere JavaScript-Features (kein ?., kein ??, kein Blob.arrayBuffer),
+  damit es in Safari unter iOS 12 läuft.
+*/
+(function () {
+  'use strict';
+
+  var DB_NAME = 'mp3player';
+  var DB_VERSION = 1;
+  var LOG_KEY = 'mp3player-log';
+
+  var db = null;
+  var songs = [];          // Metadaten: {id, name, size, added}
+  var current = -1;        // Index des aktuellen Songs
+  var currentUrl = null;   // Blob-URL des aktuellen Songs
+  var nextIndex = -1;      // vorbereiteter nächster Song
+  var nextUrl = null;      // Blob-URL des vorbereiteten Songs
+  var lastImport = null;   // {selected, mp3, saved, failed}
+  var startedFrom = 'unbekannt';
+  var seeking = false;
+
+  var el = function (id) { return document.getElementById(id); };
+  var audio = el('audio');
+
+  /* ---------- Protokoll ---------- */
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function timeStr() {
+    var d = new Date();
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function loadLog() {
+    try { return JSON.parse(localStorage.getItem(LOG_KEY)) || []; }
+    catch (e) { return []; }
+  }
+
+  function saveLog(entries) {
+    try { localStorage.setItem(LOG_KEY, JSON.stringify(entries.slice(0, 200))); }
+    catch (e) { /* Protokoll ist nur Hilfsmittel */ }
+  }
+
+  function renderLog() {
+    var entries = loadLog();
+    var list = el('log');
+    list.innerHTML = '';
+    for (var i = 0; i < entries.length; i++) {
+      var li = document.createElement('li');
+      li.textContent = entries[i];
+      list.appendChild(li);
+    }
+  }
+
+  function log(msg) {
+    var entries = loadLog();
+    entries.unshift(timeStr() + '  ' + msg);
+    saveLog(entries);
+    renderLog();
+  }
+
+  /* ---------- Hilfsfunktionen ---------- */
+
+  function formatMB(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
+  }
+
+  function stripExt(name) {
+    return name.replace(/\.mp3$/i, '');
+  }
+
+  function isMp3(file) {
+    return /\.mp3$/i.test(file.name) || file.type === 'audio/mpeg' || file.type === 'audio/mp3';
+  }
+
+  function makeId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function readAsArrayBuffer(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(reader.error || new Error('Datei nicht lesbar')); };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function makeUrl(buffer) {
+    return URL.createObjectURL(new Blob([buffer], { type: 'audio/mpeg' }));
+  }
+
+  function errText(e) {
+    if (!e) return 'unbekannter Fehler';
+    return (e.name ? e.name + ': ' : '') + (e.message || String(e));
+  }
+
+  /* ---------- Datenbank (IndexedDB) ---------- */
+
+  function openDB() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('IndexedDB nicht verfügbar')); return; }
+      var req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function () {
+        var d = req.result;
+        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('data')) d.createObjectStore('data');
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function getAllMeta() {
+    return new Promise(function (resolve, reject) {
+      var result = [];
+      var tx = db.transaction('meta', 'readonly');
+      var req = tx.objectStore('meta').openCursor();
+      req.onsuccess = function () {
+        var cursor = req.result;
+        if (cursor) { result.push(cursor.value); cursor.continue(); }
+      };
+      tx.oncomplete = function () {
+        result.sort(function (a, b) { return a.added - b.added; });
+        resolve(result);
+      };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  function getData(id) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction('data', 'readonly');
+      var req = tx.objectStore('data').get(id);
+      req.onsuccess = function () {
+        if (req.result) resolve(req.result);
+        else reject(new Error('Songdaten fehlen'));
+      };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+
+  function saveSong(file, buffer, order) {
+    return new Promise(function (resolve, reject) {
+      var meta = { id: makeId(), name: stripExt(file.name), size: buffer.byteLength, added: Date.now() + order };
+      var tx = db.transaction(['meta', 'data'], 'readwrite');
+      tx.objectStore('data').put(buffer, meta.id);
+      tx.objectStore('meta').put(meta);
+      tx.oncomplete = function () { resolve(meta); };
+      tx.onerror = function () { reject(tx.error); };
+      tx.onabort = function () { reject(tx.error || new Error('Speichern abgebrochen')); };
+    });
+  }
+
+  function clearAll() {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(['meta', 'data'], 'readwrite');
+      tx.objectStore('meta').clear();
+      tx.objectStore('data').clear();
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+
+  /* ---------- Import ---------- */
+
+  function importFiles(fileList) {
+    var files = [];
+    var total = fileList.length;
+    for (var i = 0; i < fileList.length; i++) {
+      if (isMp3(fileList[i])) files.push(fileList[i]);
+    }
+    lastImport = { selected: total, mp3: files.length, saved: 0, failed: 0 };
+    log('Import: ' + total + ' Datei(en) ausgewählt, davon ' + files.length + ' MP3');
+    el('pickerLabel').style.opacity = '0.5';
+
+    var index = 0;
+    function next() {
+      if (index >= files.length) return Promise.resolve();
+      var file = files[index];
+      var order = index;
+      index++;
+      el('importStatus').textContent = 'Speichere ' + index + ' von ' + files.length + ': ' + file.name;
+      return readAsArrayBuffer(file)
+        .then(function (buf) { return saveSong(file, buf, order); })
+        .then(function () { lastImport.saved++; })
+        .catch(function (e) {
+          lastImport.failed++;
+          log('Fehler bei „' + file.name + '“: ' + errText(e));
+        })
+        .then(next);
+    }
+
+    return next().then(function () {
+      el('pickerLabel').style.opacity = '';
+      el('importStatus').textContent = lastImport.saved + ' von ' + files.length + ' Song(s) gespeichert.';
+      log('Import fertig: ' + lastImport.saved + ' gespeichert, ' + lastImport.failed + ' fehlgeschlagen');
+      return refreshSongs();
+    });
+  }
+
+  /* ---------- Songliste ---------- */
+
+  function refreshSongs() {
+    return getAllMeta().then(function (list) {
+      var currentId = current >= 0 && songs[current] ? songs[current].id : null;
+      songs = list;
+      current = -1;
+      for (var i = 0; i < songs.length; i++) {
+        if (songs[i].id === currentId) current = i;
+      }
+      dropPrepared();
+      renderSongs();
+      renderDiag();
+      if (current >= 0) prepareNext();
+    });
+  }
+
+  function renderSongs() {
+    var list = el('songList');
+    list.innerHTML = '';
+    el('emptyHint').style.display = songs.length ? 'none' : '';
+    for (var i = 0; i < songs.length; i++) {
+      (function (i) {
+        var li = document.createElement('li');
+        if (i === current) li.className = 'current';
+        var b = document.createElement('button');
+        var name = document.createElement('div');
+        name.textContent = songs[i].name;
+        var size = document.createElement('div');
+        size.className = 'size';
+        size.textContent = formatMB(songs[i].size);
+        b.appendChild(name);
+        b.appendChild(size);
+        b.addEventListener('click', function () { playIndex(i); });
+        li.appendChild(b);
+        list.appendChild(li);
+      })(i);
+    }
+  }
+
+  /* ---------- Wiedergabe ---------- */
+
+  function dropPrepared() {
+    if (nextUrl) URL.revokeObjectURL(nextUrl);
+    nextUrl = null;
+    nextIndex = -1;
+  }
+
+  // Nächsten Song vorab aus der Datenbank laden, damit der Wechsel
+  // bei gesperrtem Bildschirm ohne Datenbankzugriff passieren kann.
+  function prepareNext() {
+    if (!songs.length || current < 0) return;
+    var n = (current + 1) % songs.length;   // Wiederholen: nach dem letzten kommt der erste
+    if (n === nextIndex && nextUrl) return;
+    dropPrepared();
+    var id = songs[n].id;
+    getData(id).then(function (buf) {
+      if (songs[n] && songs[n].id === id && nextIndex === -1) {
+        nextIndex = n;
+        nextUrl = makeUrl(buf);
+      }
+    }).catch(function (e) { log('Vorladen fehlgeschlagen: ' + errText(e)); });
+  }
+
+  function startUrl(i, url) {
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = url;
+    current = i;
+    audio.src = url;
+    var p = audio.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(function (e) { log('Abspielen blockiert: ' + errText(e)); });
+    }
+    log('Spielt: ' + songs[i].name + (document.hidden ? '  [Bildschirm aus/Hintergrund]' : ''));
+    document.title = songs[i].name;
+    el('nowPlaying').textContent = songs[i].name;
+    renderSongs();
+  }
+
+  function playIndex(i) {
+    if (i < 0 || i >= songs.length) return;
+    if (i === nextIndex && nextUrl) {
+      var url = nextUrl;
+      nextUrl = null;
+      nextIndex = -1;
+      startUrl(i, url);
+      prepareNext();
+      return;
+    }
+    getData(songs[i].id).then(function (buf) {
+      startUrl(i, makeUrl(buf));
+      prepareNext();
+    }).catch(function (e) { log('Song nicht ladbar: ' + errText(e)); });
+  }
+
+  function playNext() {
+    if (!songs.length) return;
+    playIndex((current + 1) % songs.length);
+  }
+
+  function playPrev() {
+    if (!songs.length) return;
+    if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+    playIndex((current - 1 + songs.length) % songs.length);
+  }
+
+  audio.addEventListener('ended', function () {
+    log('Song zu Ende' + (document.hidden ? '  [Bildschirm aus/Hintergrund]' : ''));
+    playNext();
+  });
+  audio.addEventListener('play', function () { el('playBtn').textContent = 'Pause'; });
+  audio.addEventListener('pause', function () { el('playBtn').textContent = 'Abspielen'; });
+  audio.addEventListener('error', function () {
+    var code = audio.error ? audio.error.code : '?';
+    log('Wiedergabefehler (Code ' + code + ')');
+  });
+  audio.addEventListener('timeupdate', function () {
+    if (seeking || !audio.duration) return;
+    el('progress').value = Math.round((audio.currentTime / audio.duration) * 1000);
+  });
+
+  el('progress').addEventListener('input', function () { seeking = true; });
+  el('progress').addEventListener('change', function () {
+    if (audio.duration) audio.currentTime = (el('progress').value / 1000) * audio.duration;
+    seeking = false;
+  });
+
+  el('playBtn').addEventListener('click', function () {
+    if (current < 0) { if (songs.length) playIndex(0); return; }
+    if (audio.paused) audio.play(); else audio.pause();
+  });
+  el('nextBtn').addEventListener('click', playNext);
+  el('prevBtn').addEventListener('click', playPrev);
+
+  document.addEventListener('visibilitychange', function () {
+    log(document.hidden ? 'Seite im Hintergrund / Bildschirm aus' : 'Seite wieder sichtbar');
+  });
+
+  /* ---------- Testergebnisse ---------- */
+
+  function iosVersion() {
+    var m = navigator.userAgent.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
+    if (!m) return 'nicht erkannt';
+    return m[1] + '.' + m[2] + (m[3] ? '.' + m[3] : '');
+  }
+
+  function addDiag(dl, label, value, cls) {
+    var dt = document.createElement('dt');
+    dt.textContent = label;
+    var dd = document.createElement('dd');
+    dd.textContent = value;
+    if (cls) dd.className = cls;
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+
+  function renderDiag() {
+    var dl = el('diag');
+    dl.innerHTML = '';
+    var totalBytes = 0;
+    for (var i = 0; i < songs.length; i++) totalBytes += songs[i].size;
+
+    addDiag(dl, 'iOS-Version', iosVersion());
+
+    var sw;
+    var swCls = 'warn';
+    if (!('serviceWorker' in navigator)) { sw = 'Nicht unterstützt – Offline-Start nicht möglich'; swCls = 'bad'; }
+    else if (navigator.serviceWorker.controller) { sw = 'Aktiv – App sollte offline starten'; swCls = 'ok'; }
+    else { sw = 'Wird eingerichtet – Seite einmal neu laden'; }
+    addDiag(dl, 'Offline-Modus', sw, swCls);
+
+    addDiag(dl, 'Diese Seite geladen', startedFrom);
+    addDiag(dl, 'Internetverbindung', navigator.onLine ? 'Online' : 'Offline (Flugmodus?)');
+    addDiag(dl, 'Gespeicherte Songs', songs.length + ' Song(s), zusammen ' + formatMB(totalBytes),
+      songs.length ? 'ok' : null);
+
+    if (lastImport) {
+      addDiag(dl, 'Letzter Import',
+        lastImport.selected + ' ausgewählt, ' + lastImport.saved + ' gespeichert, ' + lastImport.failed + ' fehlgeschlagen',
+        lastImport.failed ? 'bad' : 'ok');
+    } else {
+      addDiag(dl, 'Letzter Import', 'In dieser Sitzung noch nicht importiert');
+    }
+  }
+
+  window.addEventListener('online', renderDiag);
+  window.addEventListener('offline', renderDiag);
+
+  /* ---------- Bedienelemente ---------- */
+
+  el('picker').addEventListener('change', function () {
+    var files = el('picker').files;
+    if (!files || !files.length) return;
+    importFiles(files).then(function () { el('picker').value = ''; });
+  });
+
+  el('clearLog').addEventListener('click', function () {
+    saveLog([]);
+    renderLog();
+  });
+
+  el('deleteAll').addEventListener('click', function () {
+    if (!confirm('Alle gespeicherten Songs aus dieser App löschen?')) return;
+    audio.pause();
+    audio.removeAttribute('src');
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = null;
+    current = -1;
+    dropPrepared();
+    el('nowPlaying').textContent = 'Kein Song ausgewählt';
+    document.title = 'MP3-Player Test';
+    clearAll().then(function () {
+      log('Alle Songs gelöscht');
+      return refreshSongs();
+    }).catch(function (e) { log('Löschen fehlgeschlagen: ' + errText(e)); });
+  });
+
+  /* ---------- Start ---------- */
+
+  renderLog();
+
+  if ('serviceWorker' in navigator) {
+    startedFrom = navigator.serviceWorker.controller ? 'Aus dem Offline-Speicher' : 'Aus dem Internet';
+    navigator.serviceWorker.register('sw.js').then(function () {
+      renderDiag();
+    }).catch(function (e) {
+      log('Offline-Modus konnte nicht eingerichtet werden: ' + errText(e));
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', renderDiag);
+  } else {
+    startedFrom = 'Aus dem Internet (kein Offline-Modus)';
+  }
+
+  log('App gestartet (' + (navigator.onLine ? 'online' : 'offline') + ')');
+
+  openDB().then(function (d) {
+    db = d;
+    return refreshSongs();
+  }).catch(function (e) {
+    log('Speicher nicht verfügbar: ' + errText(e));
+    renderDiag();
+  });
+})();
+</script>
+</body>
+</html>
